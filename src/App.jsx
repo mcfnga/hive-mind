@@ -6,9 +6,11 @@ import {
   submitPick,
   subscribeToHive,
   scoreResult,
+  fetchPicks,
 } from './lib/game'
 
 const STORAGE_KEY = 'hive_streak_v1'
+const SESSION_KEY = 'hive_session_v1'
 
 function loadStreak() {
   try {
@@ -20,6 +22,22 @@ function loadStreak() {
 
 function saveStreak(s) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)) } catch (e) {}
+}
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch (e) {}
+  return null
+}
+
+function saveSession(session) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)) } catch (e) {}
+}
+
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY) } catch (e) {}
 }
 
 function todayStr() {
@@ -114,7 +132,7 @@ const styles = `
 
 export default function App() {
   const [tab, setTab] = useState('play')
-  const [phase, setPhase] = useState('pick')
+  const [phase, setPhase] = useState('loading')
   const [myPick, setMyPick] = useState(42)
   const [hive, setHive] = useState(null)
   const [allPicks, setAllPicks] = useState([])
@@ -127,7 +145,65 @@ export default function App() {
   const unsubRef = useRef(null)
   const playerId = useRef(getOrCreatePlayerId())
 
+  // On mount — restore session if one exists
   useEffect(() => {
+    async function restoreSession() {
+      const session = loadSession()
+      if (!session) { setPhase('pick'); return }
+
+      const { hiveId, hiveCode, myPick: savedPick } = session
+
+      // Check current hive status
+      const { createClient } = await import('@supabase/supabase-js')
+      const { supabase } = await import('./lib/supabase')
+      const { data: hiveData } = await supabase
+        .from('hives')
+        .select('id, hive_code, status')
+        .eq('id', hiveId)
+        .single()
+
+      if (!hiveData) { clearSession(); setPhase('pick'); return }
+
+      setHive(hiveData)
+      setMyPick(savedPick)
+
+      if (hiveData.status === 'revealed') {
+        // Hive revealed while we were away — load results directly
+        const picks = await fetchPicks(hiveId)
+        setAllPicks(picks)
+        const r = scoreResult(savedPick, picks)
+        setResult(r)
+        setStreak((s) => {
+          const updated = recordRound({ ...s }, savedPick, r.score, r.label, r.cls)
+          return updated
+        })
+        clearSession()
+        setPhase('reveal')
+      } else {
+        // Still waiting — resubscribe
+        setPhase('waiting')
+        const { data: picks } = await supabase
+          .from('picks')
+          .select('id')
+          .eq('hive_id', hiveId)
+        setVotedCount(picks?.length ?? 0)
+
+        const unsub = subscribeToHive(hiveId, {
+          onPlayerJoined: () => setVotedCount((c) => c + 1),
+          onRevealed: (picks) => {
+            setAllPicks(picks)
+            const r = scoreResult(savedPick, picks)
+            setResult(r)
+            setStreak((s) => recordRound({ ...s }, savedPick, r.score, r.label, r.cls))
+            clearSession()
+            setPhase('reveal')
+            if (unsubRef.current) unsubRef.current()
+          },
+        })
+        unsubRef.current = unsub
+      }
+    }
+    restoreSession()
     return () => { if (unsubRef.current) unsubRef.current() }
   }, [])
 
@@ -139,15 +215,20 @@ export default function App() {
       const hiveData = await joinHive(playerId.current)
       setHive(hiveData)
       const pick = await submitPick(hiveData.id, playerId.current, myPick)
-setMyPick(pick.number)
-setPhase('waiting')
+      setMyPick(pick.number)
+
+      // Save session so we can restore if tab closes
+      saveSession({ hiveId: hiveData.id, hiveCode: hiveData.hive_code, myPick: pick.number })
+
+      setPhase('waiting')
       const unsub = subscribeToHive(hiveData.id, {
         onPlayerJoined: () => setVotedCount((c) => c + 1),
         onRevealed: (picks) => {
           setAllPicks(picks)
-          const r = scoreResult(myPick, picks)
+          const r = scoreResult(pick.number, picks)
           setResult(r)
-          setStreak((s) => recordRound({ ...s }, myPick, r.score, r.label, r.cls))
+          setStreak((s) => recordRound({ ...s }, pick.number, r.score, r.label, r.cls))
+          clearSession()
           setPhase('reveal')
           if (unsubRef.current) unsubRef.current()
         },
@@ -163,6 +244,7 @@ setPhase('waiting')
 
   function handlePlayAgain() {
     if (unsubRef.current) unsubRef.current()
+    clearSession()
     setPhase('pick')
     setMyPick(42)
     setHive(null)
@@ -193,6 +275,17 @@ setPhase('waiting')
     top.sort((a, b) => b[1] - a[1])
     const max = top[0][1]
     return { top, max }
+  }
+
+  if (phase === 'loading') {
+    return (
+      <>
+        <style>{styles}</style>
+        <div className="app">
+          <div className="pulse-ring" style={{ margin: '0 auto' }} />
+        </div>
+      </>
+    )
   }
 
   return (
