@@ -158,9 +158,9 @@ export default function App() {
   }
 
   function handleShare() {
-    if (!result) return
-    const txt = `Hive ${hive?.hive_code}\nI picked ${myPick} — ${result.label}\n${result.score} pts | ${streak.current} day streak\nplayhive.gg`
-    navigator.clipboard.writeText(txt).catch(() => {})
+    if (!result || !hive) return
+    const cardUrl = `https://jgjmwgywpnodezcrphcp.supabase.co/functions/v1/share-card?hive_id=${hive.id}&player_id=${playerId.current}`
+    window.open(cardUrl, '_blank')
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
