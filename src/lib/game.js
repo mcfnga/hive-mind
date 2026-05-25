@@ -51,7 +51,13 @@ export async function submitPick(hiveId, playerId, number) {
     .insert({ hive_id: hiveId, player_id: playerId, number })
     .select()
     .single()
-  if (error) throw error
+
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error('You already picked a number in this hive. Wait for the reveal!')
+    }
+    throw error
+  }
 
   // Attempt to close the hive — succeeds silently if not full yet
   await supabase.functions.invoke('close-hive', {
