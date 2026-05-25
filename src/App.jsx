@@ -189,7 +189,7 @@ export default function App() {
         setVotedCount(picks?.length ?? 0)
 
         const unsub = subscribeToHive(hiveId, {
-          onPlayerJoined: () => setVotedCount((c) => c + 1),
+          onPlayerJoined: () => setVotedCount((c) => Math.min(c + 1, 50)),
           onRevealed: (picks) => {
             setAllPicks(picks)
             const r = scoreResult(savedPick, picks)
@@ -222,7 +222,7 @@ export default function App() {
 
       setPhase('waiting')
       const unsub = subscribeToHive(hiveData.id, {
-        onPlayerJoined: () => setVotedCount((c) => c + 1),
+        onPlayerJoined: () => setVotedCount((c) => Math.min(c + 1, 50)),
         onRevealed: (picks) => {
           setAllPicks(picks)
           const r = scoreResult(pick.number, picks)
