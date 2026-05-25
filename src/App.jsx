@@ -96,7 +96,20 @@ const styles = `
   .history-item:last-child{border-bottom:none;}
   .error-box{background:rgba(224,92,106,0.1);border:0.5px solid var(--bad);border-radius:12px;padding:14px 16px;font-size:13px;color:var(--bad);margin-bottom:16px;width:100%;text-align:center;}
 `
-
+function HiveLogo() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
+      <svg width="40" height="46" viewBox="0 0 48 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="24,0 48,14 48,42 24,56 0,42 0,14" fill="#7c6fef" fillOpacity="0.2"/>
+        <polygon points="24,0 48,14 48,42 24,56 0,42 0,14" fill="none" stroke="#7c6fef" strokeWidth="1.5"/>
+        <polygon points="24,10 38,18 38,38 24,46 10,38 10,18" fill="#7c6fef" fillOpacity="0.3"/>
+        <polygon points="24,10 38,18 38,38 24,46 10,38 10,18" fill="none" stroke="#a89ff0" strokeWidth="1"/>
+        <circle cx="24" cy="28" r="5" fill="#a89ff0"/>
+      </svg>
+      <span style={{ fontFamily: 'Syne, sans-serif', fontSize: 28, fontWeight: 800, color: '#e8e6ff', letterSpacing: -1 }}>hive</span>
+    </div>
+  )
+}
 export default function App() {
   const [tab, setTab] = useState('play')
   const [phase, setPhase] = useState('pick')
@@ -216,7 +229,11 @@ export default function App() {
 
             {phase === 'waiting' && (
               <div className="screen" style={{ textAlign: 'center', padding: '40px 0' }}>
-                <div className="hive-id">{hive?.hive_code}</div>
+                <div className="screen" style={{ textAlign: 'center', padding: '40px 0' }}>
+  <HiveLogo />
+  <div className="hive-id">{hive?.hive_code}</div>
+  <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Waiting for the hive</div>
+  ...<div className="hive-id">{hive?.hive_code}</div>
                 <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Waiting for the hive</div>
                 <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
                   You picked <strong style={{ color: 'var(--accent2)' }}>{myPick}</strong>.<br />Results drop when everyone votes.
