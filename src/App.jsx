@@ -46,6 +46,21 @@ function recordRound(streak, pick, score, label, cls) {
   return { ...streak }
 }
 
+function HiveLogo() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
+      <svg width="40" height="46" viewBox="0 0 48 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="24,0 48,14 48,42 24,56 0,42 0,14" fill="#7c6fef" fillOpacity="0.2"/>
+        <polygon points="24,0 48,14 48,42 24,56 0,42 0,14" fill="none" stroke="#7c6fef" strokeWidth="1.5"/>
+        <polygon points="24,10 38,18 38,38 24,46 10,38 10,18" fill="#7c6fef" fillOpacity="0.3"/>
+        <polygon points="24,10 38,18 38,38 24,46 10,38 10,18" fill="none" stroke="#a89ff0" strokeWidth="1"/>
+        <circle cx="24" cy="28" r="5" fill="#a89ff0"/>
+      </svg>
+      <span style={{ fontFamily: 'Syne, sans-serif', fontSize: 28, fontWeight: 800, color: '#e8e6ff', letterSpacing: -1 }}>hive</span>
+    </div>
+  )
+}
+
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;700;800&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;}
@@ -96,20 +111,7 @@ const styles = `
   .history-item:last-child{border-bottom:none;}
   .error-box{background:rgba(224,92,106,0.1);border:0.5px solid var(--bad);border-radius:12px;padding:14px 16px;font-size:13px;color:var(--bad);margin-bottom:16px;width:100%;text-align:center;}
 `
-function HiveLogo() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
-      <svg width="40" height="46" viewBox="0 0 48 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <polygon points="24,0 48,14 48,42 24,56 0,42 0,14" fill="#7c6fef" fillOpacity="0.2"/>
-        <polygon points="24,0 48,14 48,42 24,56 0,42 0,14" fill="none" stroke="#7c6fef" strokeWidth="1.5"/>
-        <polygon points="24,10 38,18 38,38 24,46 10,38 10,18" fill="#7c6fef" fillOpacity="0.3"/>
-        <polygon points="24,10 38,18 38,38 24,46 10,38 10,18" fill="none" stroke="#a89ff0" strokeWidth="1"/>
-        <circle cx="24" cy="28" r="5" fill="#a89ff0"/>
-      </svg>
-      <span style={{ fontFamily: 'Syne, sans-serif', fontSize: 28, fontWeight: 800, color: '#e8e6ff', letterSpacing: -1 }}>hive</span>
-    </div>
-  )
-}
+
 export default function App() {
   const [tab, setTab] = useState('play')
   const [phase, setPhase] = useState('pick')
@@ -138,7 +140,6 @@ export default function App() {
       setHive(hiveData)
       await submitPick(hiveData.id, playerId.current, myPick)
       setPhase('waiting')
-
       const unsub = subscribeToHive(hiveData.id, {
         onPlayerJoined: () => setVotedCount((c) => c + 1),
         onRevealed: (picks) => {
@@ -207,6 +208,7 @@ export default function App() {
 
             {phase === 'pick' && (
               <div className="screen">
+                <HiveLogo />
                 {error && <div className="error-box">{error}</div>}
                 <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', width: 175, marginBottom: 6 }}>{dots}</div>
                 <div style={{ fontFamily: 'DM Mono,monospace', fontSize: 11, color: 'var(--muted)', marginBottom: 28 }}>waiting for players</div>
@@ -229,11 +231,8 @@ export default function App() {
 
             {phase === 'waiting' && (
               <div className="screen" style={{ textAlign: 'center', padding: '40px 0' }}>
-                <div className="screen" style={{ textAlign: 'center', padding: '40px 0' }}>
-  <HiveLogo />
-  <div className="hive-id">{hive?.hive_code}</div>
-  <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Waiting for the hive</div>
-  ...<div className="hive-id">{hive?.hive_code}</div>
+                <HiveLogo />
+                <div className="hive-id">{hive?.hive_code}</div>
                 <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Waiting for the hive</div>
                 <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
                   You picked <strong style={{ color: 'var(--accent2)' }}>{myPick}</strong>.<br />Results drop when everyone votes.
@@ -251,6 +250,7 @@ export default function App() {
               const numColor = result.cls === 'verdict-unique' ? 'var(--good)' : result.cls === 'verdict-few' ? 'var(--accent2)' : 'var(--bad)'
               return (
                 <div style={{ width: '100%', maxWidth: 400, position: 'relative', zIndex: 1 }}>
+                  <HiveLogo />
                   <div style={{ textAlign: 'center', marginBottom: 16, fontFamily: 'DM Mono,monospace', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>{hive?.hive_code} — results</div>
                   <div style={{ textAlign: 'center', marginBottom: 20 }}>
                     <div style={{ fontSize: 72, fontWeight: 800, lineHeight: 1, letterSpacing: -2, color: numColor }}>{myPick}</div>
@@ -264,7 +264,7 @@ export default function App() {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--warn)' }}>{streak.current} day streak</div>
                       <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
-                        {streak.current > 1 ? `Keep it going!` : `Play again tomorrow to start a streak`}
+                        {streak.current > 1 ? 'Keep it going!' : 'Play again tomorrow to start a streak'}
                       </div>
                     </div>
                     <div style={{ fontFamily: 'DM Mono,monospace', fontSize: 11, color: 'var(--muted)' }}>best: {streak.best}</div>
@@ -285,7 +285,7 @@ export default function App() {
                     })}
                   </div>
                   <button className="primary-btn" style={{ marginTop: 20 }} onClick={handleShare}>
-                    {copied ? 'Copied!' : 'Copy result to share'}
+                    {copied ? 'Opening card...' : 'Share result'}
                   </button>
                   <button className="ghost-btn" onClick={handlePlayAgain}>Play another round</button>
                   <button className="text-btn" onClick={() => setTab('stats')}>View full stats</button>
@@ -312,6 +312,7 @@ export default function App() {
                 <button className="nav-btn active">Stats</button>
               </div>
               <div style={{ width: '100%', maxWidth: 400, position: 'relative', zIndex: 1 }}>
+                <HiveLogo />
                 <div className="stats-grid">
                   {[
                     { val: streak.current, label: 'Streak', color: 'var(--warn)' },
