@@ -138,8 +138,9 @@ export default function App() {
       await ensurePlayer(playerId.current)
       const hiveData = await joinHive(playerId.current)
       setHive(hiveData)
-      await submitPick(hiveData.id, playerId.current, myPick)
-      setPhase('waiting')
+      const pick = await submitPick(hiveData.id, playerId.current, myPick)
+setMyPick(pick.number)
+setPhase('waiting')
       const unsub = subscribeToHive(hiveData.id, {
         onPlayerJoined: () => setVotedCount((c) => c + 1),
         onRevealed: (picks) => {

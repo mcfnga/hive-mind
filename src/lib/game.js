@@ -54,7 +54,15 @@ export async function submitPick(hiveId, playerId, number) {
 
   if (error) {
     if (error.code === '23505') {
-      throw new Error('You already picked a number in this hive. Wait for the reveal!')
+      // Already picked — fetch and return existing pick
+      const { data: existing, error: fetchError } = await supabase
+        .from('picks')
+        .select()
+        .eq('hive_id', hiveId)
+        .eq('player_id', playerId)
+        .single()
+      if (fetchError) throw fetchError
+      return existing
     }
     throw error
   }
