@@ -18,7 +18,6 @@ export function getOrCreatePlayerId() {
 }
 
 export async function ensurePlayer(playerId) {
-  // Insert is a no-op if the player already exists (upsert on primary key)
   const { error } = await supabase
     .from('players')
     .upsert({ id: playerId }, { onConflict: 'id', ignoreDuplicates: true })
@@ -41,8 +40,9 @@ export async function joinHive(playerId) {
 
 // ---------------------------------------------------------------------------
 // Submitting a pick
-// Inserts the player's number into the picks table. The edge function
-// close-hive is triggered automatically once all seats are filled.
+// Inserts the player's number. If they already have a pick in this hive
+// (e.g. they refreshed), silently returns the existing pick instead.
+// Does NOT call close-hive — the cron job handles that to avoid race conditions.
 // ---------------------------------------------------------------------------
 
 export async function submitPick(hiveId, playerId, number) {
@@ -67,22 +67,40 @@ export async function submitPick(hiveId, playerId, number) {
     throw error
   }
 
-  // Attempt to close the hive — succeeds silently if not full yet
-  await supabase.functions.invoke('close-hive', {
-    body: { hive_id: hiveId },
-  })
-
   return data
 }
 
 // ---------------------------------------------------------------------------
 // Real-time subscription
 // Subscribes to changes on the hives table for a specific hive ID.
-// When status flips to 'revealed', onReveal is called with all picks.
+// Handles both direct 'revealed' updates and the transient 'scoring' state
+// by polling until revealed. Cleans up poll timer on unsubscribe.
 // ---------------------------------------------------------------------------
 
 export function subscribeToHive(hiveId, { onPlayerJoined, onRevealed }) {
-  console.log('Subscribing to hive:', hiveId)
+  let pollTimer = null
+  let revealed = false
+
+  function triggerReveal() {
+    if (revealed) return // Guard against double-firing
+    revealed = true
+    if (pollTimer) clearInterval(pollTimer)
+    fetchPicks(hiveId).then((picks) => onRevealed?.(picks))
+  }
+
+  function startPolling() {
+    if (pollTimer || revealed) return
+    pollTimer = setInterval(async () => {
+      const { data } = await supabase
+        .from('hives')
+        .select('status')
+        .eq('id', hiveId)
+        .single()
+      if (data?.status === 'revealed') triggerReveal()
+    }, 1500)
+    // Safety timeout after 30 seconds
+    setTimeout(() => { if (pollTimer) clearInterval(pollTimer) }, 30000)
+  }
 
   const channel = supabase
     .channel(`hive:${hiveId}`)
@@ -90,42 +108,28 @@ export function subscribeToHive(hiveId, { onPlayerJoined, onRevealed }) {
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'picks', filter: `hive_id=eq.${hiveId}` },
       (payload) => {
-        console.log('Pick inserted:', payload)
         onPlayerJoined?.(payload.new)
       }
     )
     .on(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'hives', filter: `id=eq.${hiveId}` },
-      async (payload) => {
-  console.log('Hive updated:', payload)
-  if (payload.new.status === 'revealed') {
-    const picks = await fetchPicks(hiveId)
-    onRevealed?.(picks)
-  } else if (payload.new.status === 'scoring') {
-    // Poll until revealed — scoring is transient, revealed follows within seconds
-    const poll = setInterval(async () => {
-      const { data } = await supabase
-        .from('hives')
-        .select('status')
-        .eq('id', hiveId)
-        .single()
-      if (data?.status === 'revealed') {
-        clearInterval(poll)
-        const picks = await fetchPicks(hiveId)
-        onRevealed?.(picks)
+      (payload) => {
+        if (payload.new.status === 'revealed') {
+          triggerReveal()
+        } else if (payload.new.status === 'scoring') {
+          // Scoring is transient — start polling until revealed
+          startPolling()
+        }
       }
-    }, 1000)
-    // Safety timeout after 15 seconds
-    setTimeout(() => clearInterval(poll), 15000)
-  }
-}
     )
-    .subscribe((status) => {
-      console.log('Subscription status:', status)
-    })
+    .subscribe()
 
-  return () => supabase.removeChannel(channel)
+  // Return unsubscribe — cleans up channel AND any running poll timer
+  return () => {
+    if (pollTimer) clearInterval(pollTimer)
+    supabase.removeChannel(channel)
+  }
 }
 
 // ---------------------------------------------------------------------------
