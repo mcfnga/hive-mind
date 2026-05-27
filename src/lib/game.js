@@ -98,12 +98,28 @@ export function subscribeToHive(hiveId, { onPlayerJoined, onRevealed }) {
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'hives', filter: `id=eq.${hiveId}` },
       async (payload) => {
-        console.log('Hive updated:', payload)
-        if (payload.new.status === 'revealed') {
-          const picks = await fetchPicks(hiveId)
-          onRevealed?.(picks)
-        }
+  console.log('Hive updated:', payload)
+  if (payload.new.status === 'revealed') {
+    const picks = await fetchPicks(hiveId)
+    onRevealed?.(picks)
+  } else if (payload.new.status === 'scoring') {
+    // Poll until revealed — scoring is transient, revealed follows within seconds
+    const poll = setInterval(async () => {
+      const { data } = await supabase
+        .from('hives')
+        .select('status')
+        .eq('id', hiveId)
+        .single()
+      if (data?.status === 'revealed') {
+        clearInterval(poll)
+        const picks = await fetchPicks(hiveId)
+        onRevealed?.(picks)
       }
+    }, 1000)
+    // Safety timeout after 15 seconds
+    setTimeout(() => clearInterval(poll), 15000)
+  }
+}
     )
     .subscribe((status) => {
       console.log('Subscription status:', status)
