@@ -151,12 +151,12 @@ export default function App() {
       const session = loadSession()
       if (!session) { setPhase('pick'); return }
 
-      const { hiveId, hiveCode, myPick: savedPick } = session
+      const { hiveId, myPick: savedPick } = session
 
-      // Check current hive status
-      const { createClient } = await import('@supabase/supabase-js')
-      const { supabase } = await import('./lib/supabase')
-      const { data: hiveData } = await supabase
+      // Use statically imported functions and supabase client
+      const { supabase: sb } = await import('./lib/supabase')
+
+      const { data: hiveData } = await sb
         .from('hives')
         .select('id, hive_code, status')
         .eq('id', hiveId)
@@ -167,26 +167,41 @@ export default function App() {
       setHive(hiveData)
       setMyPick(savedPick)
 
+      // Handle all terminal/near-terminal states
       if (hiveData.status === 'revealed') {
-        // Hive revealed while we were away — load results directly
+        // Revealed while away — load results directly
         const picks = await fetchPicks(hiveId)
         setAllPicks(picks)
         const r = scoreResult(savedPick, picks)
         setResult(r)
-        setStreak((s) => {
-          const updated = recordRound({ ...s }, savedPick, r.score, r.label, r.cls)
-          return updated
-        })
+        setStreak((s) => recordRound({ ...s }, savedPick, r.score, r.label, r.cls))
         clearSession()
         setPhase('reveal')
-      } else {
-        // Still waiting — resubscribe
+      } else if (hiveData.status === 'scoring') {
+        // Transitional — poll until revealed
         setPhase('waiting')
-        const { data: picks } = await supabase
+        const poll = setInterval(async () => {
+          const { data } = await sb.from('hives').select('status').eq('id', hiveId).single()
+          if (data?.status === 'revealed') {
+            clearInterval(poll)
+            const picks = await fetchPicks(hiveId)
+            setAllPicks(picks)
+            const r = scoreResult(savedPick, picks)
+            setResult(r)
+            setStreak((s) => recordRound({ ...s }, savedPick, r.score, r.label, r.cls))
+            clearSession()
+            setPhase('reveal')
+          }
+        }, 1500)
+        setTimeout(() => clearInterval(poll), 30000)
+      } else {
+        // Still open — resubscribe to real-time
+        setPhase('waiting')
+        const { data: existingPicks } = await sb
           .from('picks')
           .select('id')
           .eq('hive_id', hiveId)
-        setVotedCount(picks?.length ?? 0)
+        setVotedCount(existingPicks?.length ?? 0)
 
         const unsub = subscribeToHive(hiveId, {
           onPlayerJoined: () => setVotedCount((c) => Math.min(c + 1, 100)),
