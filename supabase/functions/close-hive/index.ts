@@ -5,7 +5,7 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 )
 
-const HIVE_SIZE = 2
+const HIVE_SIZE = 50
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -26,6 +26,28 @@ Deno.serve(async (req) => {
     })
   }
 
+  // Claim the hive — accept both 'open' and stuck 'scoring' states
+  const { data: claimed, error: claimError } = await supabase
+    .from('hives')
+    .update({ status: 'scoring' })
+    .eq('id', hive_id)
+    .in('status', ['open', 'scoring'])
+    .select()
+
+  if (claimError) {
+    return new Response(JSON.stringify({ error: claimError.message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
+  }
+
+  if (!claimed || claimed.length === 0) {
+    // Already revealed — bail silently
+    return new Response(JSON.stringify({ message: 'Hive already revealed' }), {
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
+  }
+
+  // Fetch all picks
   const { data: picks, error: picksError } = await supabase
     .from('picks')
     .select('id, player_id, number')
@@ -38,13 +60,15 @@ Deno.serve(async (req) => {
   }
 
   if (picks.length < HIVE_SIZE) {
+    // Not full yet — revert status back to open
+    await supabase.from('hives').update({ status: 'open' }).eq('id', hive_id)
     return new Response(JSON.stringify({ message: 'Hive not full yet', count: picks.length }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 
+  // Score each pick
   const allNumbers = picks.map((p) => p.number)
-
   const scored = picks.map((pick) => {
     const ct = allNumbers.filter((n) => n === pick.number).length
     let score
@@ -59,6 +83,7 @@ Deno.serve(async (req) => {
     await supabase.from('picks').update({ score }).eq('id', id)
   }
 
+  // Flip to revealed — this is what triggers the real-time subscription on clients
   const { error: updateError } = await supabase
     .from('hives')
     .update({ status: 'revealed', revealed_at: new Date().toISOString() })
