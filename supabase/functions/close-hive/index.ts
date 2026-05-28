@@ -5,7 +5,7 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 )
 
-const HIVE_SIZE = 50
+const HIVE_SIZE = 100
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

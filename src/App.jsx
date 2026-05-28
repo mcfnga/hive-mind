@@ -133,7 +133,7 @@ const styles = `
 export default function App() {
   const [tab, setTab] = useState('play')
   const [phase, setPhase] = useState('loading')
-  const [myPick, setMyPick] = useState(() => Math.floor(1 + Math.random() * 100))
+  const [myPick, setMyPick] = useState(42)
   const [hive, setHive] = useState(null)
   const [allPicks, setAllPicks] = useState([])
   const [votedCount, setVotedCount] = useState(0)
@@ -189,7 +189,7 @@ export default function App() {
         setVotedCount(picks?.length ?? 0)
 
         const unsub = subscribeToHive(hiveId, {
-          onPlayerJoined: () => setVotedCount((c) => Math.min(c + 1, 50)),
+          onPlayerJoined: () => setVotedCount((c) => Math.min(c + 1, 100)),
           onRevealed: (picks) => {
             setAllPicks(picks)
             const r = scoreResult(savedPick, picks)
@@ -222,7 +222,7 @@ export default function App() {
 
       setPhase('waiting')
       const unsub = subscribeToHive(hiveData.id, {
-        onPlayerJoined: () => setVotedCount((c) => Math.min(c + 1, 50)),
+        onPlayerJoined: () => setVotedCount((c) => Math.min(c + 1, 100)),
         onRevealed: (picks) => {
           setAllPicks(picks)
           const r = scoreResult(pick.number, picks)
@@ -262,7 +262,7 @@ export default function App() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const dots = Array.from({ length: 50 }, (_, i) => (
+  const dots = Array.from({ length: 100 }, (_, i) => (
     <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: i < votedCount ? '#7c6fef' : '#2a2a3a' }} />
   ))
 
@@ -304,7 +304,7 @@ export default function App() {
               <div className="screen">
                 <HiveLogo />
                 {error && <div className="error-box">{error}</div>}
-                <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', width: 175, marginBottom: 6 }}>{dots}</div>
+                <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', width: 220, marginBottom: 6 }}>{dots}</div>
                 <div style={{ fontFamily: 'DM Mono,monospace', fontSize: 11, color: 'var(--muted)', marginBottom: 28 }}>waiting for players</div>
                 <div className="hive-id">Daily hive</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20 }}>
@@ -332,9 +332,9 @@ export default function App() {
                   You picked <strong style={{ color: 'var(--accent2)' }}>{myPick}</strong>.<br />Results drop when everyone votes.
                 </div>
                 <div className="pulse-ring" />
-                <div style={{ fontFamily: 'DM Mono,monospace', fontSize: 13, color: 'var(--muted)' }}>{votedCount} / 50</div>
+                <div style={{ fontFamily: 'DM Mono,monospace', fontSize: 13, color: 'var(--muted)' }}>{votedCount} / 100</div>
                 <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${Math.round(votedCount / 50 * 100)}%` }} />
+                  <div className="progress-fill" style={{ width: `${Math.round(votedCount / 100 * 100)}%` }} />
                 </div>
               </div>
             )}

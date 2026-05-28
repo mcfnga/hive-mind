@@ -5,7 +5,7 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 )
 
-const HIVE_SIZE = 50
+const HIVE_SIZE = 100
 const BOT_WAIT_SECONDS = 90
 const FOCAL = [1, 7, 10, 13, 17, 21, 25, 27, 33, 37, 42, 47, 50, 55, 61, 69, 73, 77, 80, 88, 99, 100]
 
