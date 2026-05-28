@@ -133,7 +133,7 @@ const styles = `
 export default function App() {
   const [tab, setTab] = useState('play')
   const [phase, setPhase] = useState('loading')
-  const [myPick, setMyPick] = useState(42)
+  const [myPick, setMyPick] = useState(() => Math.floor(1 + Math.random() * 100))
   const [hive, setHive] = useState(null)
   const [allPicks, setAllPicks] = useState([])
   const [votedCount, setVotedCount] = useState(0)
