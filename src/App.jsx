@@ -143,6 +143,9 @@ export default function App() {
   const [error, setError] = useState(null)
   const [copied, setCopied] = useState(false)
   const unsubRef = useRef(null)
+  const pollRef = useRef(null)
+  const visibilityRef = useRef(null)
+  const revealedRef = useRef(false)
   const playerId = useRef(getOrCreatePlayerId())
 
   // On mount — restore session if one exists
@@ -152,8 +155,6 @@ export default function App() {
       if (!session) { setPhase('pick'); return }
 
       const { hiveId, myPick: savedPick } = session
-
-      // Use statically imported functions and supabase client
       const { supabase: sb } = await import('./lib/supabase')
 
       const { data: hiveData } = await sb
@@ -167,9 +168,7 @@ export default function App() {
       setHive(hiveData)
       setMyPick(savedPick)
 
-      // Handle all terminal/near-terminal states
       if (hiveData.status === 'revealed') {
-        // Revealed while away — load results directly
         const picks = await fetchPicks(hiveId)
         setAllPicks(picks)
         const r = scoreResult(savedPick, picks)
@@ -178,49 +177,87 @@ export default function App() {
         clearSession()
         setPhase('reveal')
       } else if (hiveData.status === 'scoring') {
-        // Transitional — poll until revealed
         setPhase('waiting')
         const poll = setInterval(async () => {
           const { data } = await sb.from('hives').select('status').eq('id', hiveId).single()
           if (data?.status === 'revealed') {
             clearInterval(poll)
             const picks = await fetchPicks(hiveId)
-            setAllPicks(picks)
-            const r = scoreResult(savedPick, picks)
-            setResult(r)
-            setStreak((s) => recordRound({ ...s }, savedPick, r.score, r.label, r.cls))
-            clearSession()
-            setPhase('reveal')
+            handleReveal(picks, savedPick)
           }
         }, 1500)
         setTimeout(() => clearInterval(poll), 30000)
       } else {
-        // Still open — resubscribe to real-time
         setPhase('waiting')
         const { data: existingPicks } = await sb
-          .from('picks')
-          .select('id')
-          .eq('hive_id', hiveId)
+          .from('picks').select('id').eq('hive_id', hiveId)
         setVotedCount(existingPicks?.length ?? 0)
-
-        const unsub = subscribeToHive(hiveId, {
-          onPlayerJoined: () => setVotedCount((c) => Math.min(c + 1, 100)),
-          onRevealed: (picks) => {
-            setAllPicks(picks)
-            const r = scoreResult(savedPick, picks)
-            setResult(r)
-            setStreak((s) => recordRound({ ...s }, savedPick, r.score, r.label, r.cls))
-            clearSession()
-            setPhase('reveal')
-            if (unsubRef.current) unsubRef.current()
-          },
-        })
-        unsubRef.current = unsub
+        startWaiting(hiveId, savedPick)
       }
     }
     restoreSession()
-    return () => { if (unsubRef.current) unsubRef.current() }
+    return () => {
+      if (unsubRef.current) unsubRef.current()
+      if (pollRef.current) clearInterval(pollRef.current)
+      if (visibilityRef.current) document.removeEventListener('visibilitychange', visibilityRef.current)
+    }
   }, [])
+
+  function handleReveal(picks, pickedNumber) {
+    if (revealedRef.current) return
+    revealedRef.current = true
+    if (pollRef.current) clearInterval(pollRef.current)
+    if (visibilityRef.current) document.removeEventListener('visibilitychange', visibilityRef.current)
+    if (unsubRef.current) unsubRef.current()
+    setAllPicks(picks)
+    const r = scoreResult(pickedNumber, picks)
+    setResult(r)
+    setStreak((s) => recordRound({ ...s }, pickedNumber, r.score, r.label, r.cls))
+    clearSession()
+    setPhase('reveal')
+  }
+
+  function startWaiting(hiveId, pickedNumber) {
+    if (unsubRef.current) unsubRef.current()
+
+    // WebSocket subscription
+    const unsub = subscribeToHive(hiveId, {
+      onPlayerJoined: () => setVotedCount((c) => Math.min(c + 1, 100)),
+      onRevealed: (picks) => handleReveal(picks, pickedNumber),
+    })
+    unsubRef.current = unsub
+
+    // Fallback poll every 10 seconds for mobile browsers
+    if (pollRef.current) clearInterval(pollRef.current)
+    const poll = setInterval(async () => {
+      const { supabase } = await import('./lib/supabase')
+      const { data } = await supabase
+        .from('hives').select('status').eq('id', hiveId).single()
+      if (data?.status === 'revealed') {
+        clearInterval(poll)
+        const picks = await fetchPicks(hiveId)
+        handleReveal(picks, pickedNumber)
+      }
+    }, 10000)
+    pollRef.current = poll
+
+    // Re-check immediately when user returns to tab after screen lock
+    if (visibilityRef.current) document.removeEventListener('visibilitychange', visibilityRef.current)
+    function onVisible() {
+      if (document.visibilityState === 'visible') {
+        import('./lib/supabase').then(({ supabase }) => {
+          supabase.from('hives').select('status').eq('id', hiveId).single()
+            .then(({ data }) => {
+              if (data?.status === 'revealed') {
+                fetchPicks(hiveId).then((picks) => handleReveal(picks, pickedNumber))
+              }
+            })
+        })
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    visibilityRef.current = onVisible
+  }
 
   async function handleLockIn() {
     setLoading(true)
@@ -231,24 +268,10 @@ export default function App() {
       setHive(hiveData)
       const pick = await submitPick(hiveData.id, playerId.current, myPick)
       setMyPick(pick.number)
-
-      // Save session so we can restore if tab closes
       saveSession({ hiveId: hiveData.id, hiveCode: hiveData.hive_code, myPick: pick.number })
-
+      revealedRef.current = false
       setPhase('waiting')
-      const unsub = subscribeToHive(hiveData.id, {
-        onPlayerJoined: () => setVotedCount((c) => Math.min(c + 1, 100)),
-        onRevealed: (picks) => {
-          setAllPicks(picks)
-          const r = scoreResult(pick.number, picks)
-          setResult(r)
-          setStreak((s) => recordRound({ ...s }, pick.number, r.score, r.label, r.cls))
-          clearSession()
-          setPhase('reveal')
-          if (unsubRef.current) unsubRef.current()
-        },
-      })
-      unsubRef.current = unsub
+      startWaiting(hiveData.id, pick.number)
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.')
       setPhase('pick')
@@ -259,9 +282,12 @@ export default function App() {
 
   function handlePlayAgain() {
     if (unsubRef.current) unsubRef.current()
+    if (pollRef.current) clearInterval(pollRef.current)
+    if (visibilityRef.current) document.removeEventListener('visibilitychange', visibilityRef.current)
+    revealedRef.current = false
     clearSession()
     setPhase('pick')
-    setMyPick(42)
+    setMyPick(Math.floor(1 + Math.random() * 100))
     setHive(null)
     setAllPicks([])
     setVotedCount(0)
